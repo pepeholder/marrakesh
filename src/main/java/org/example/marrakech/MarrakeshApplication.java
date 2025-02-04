@@ -1,4 +1,4 @@
-package org.example.marrakesh;
+package org.example.marrakech;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -9,5 +9,4 @@ public class MarrakeshApplication {
   public static void main(String[] args) {
     SpringApplication.run(MarrakeshApplication.class, args);
   }
-
 }
