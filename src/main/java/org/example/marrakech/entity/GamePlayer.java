@@ -1,7 +1,11 @@
 package org.example.marrakech.entity;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 
+@Setter
+@Getter
 @Entity
 @Table(name = "game_players")
 public class GamePlayer {
@@ -34,43 +38,4 @@ public class GamePlayer {
     this.playerColor = playerColor;
   }
 
-  public GamePlayerId getId() {
-    return id;
-  }
-
-  public void setId(GamePlayerId id) {
-    this.id = id;
-  }
-
-  public Game getGame() {
-    return game;
-  }
-
-  public void setGame(Game game) {
-    this.game = game;
-  }
-
-  public User getUser() {
-    return user;
-  }
-
-  public void setUser(User user) {
-    this.user = user;
-  }
-
-  public String getPlayerColor() {
-    return playerColor;
-  }
-
-  public void setPlayerColor(String playerColor) {
-    this.playerColor = playerColor;
-  }
-
-  public int getCoins() {
-    return coins;
-  }
-
-  public void setCoins(int coins) {
-    this.coins = coins;
-  }
 }

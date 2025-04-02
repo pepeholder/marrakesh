@@ -3,12 +3,12 @@ package org.example.marrakech.service;
 import org.example.marrakech.entity.GameTurn;
 import org.example.marrakech.repository.GameTurnRepository;
 import org.springframework.stereotype.Service;
-
 import java.util.List;
 import java.util.Optional;
 
 @Service
 public class GameTurnService {
+
   private final GameTurnRepository gameTurnRepository;
 
   public GameTurnService(GameTurnRepository gameTurnRepository) {
@@ -31,4 +31,3 @@ public class GameTurnService {
     gameTurnRepository.deleteById(id);
   }
 }
-

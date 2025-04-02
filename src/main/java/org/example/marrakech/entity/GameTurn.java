@@ -23,4 +23,7 @@ public class GameTurn {
   @ManyToOne
   @JoinColumn(name = "current_turn", nullable = false)
   private User currentTurn;
+
+  @Column(nullable = false)
+  private int turnNumber;
 }

@@ -7,6 +7,7 @@ import java.util.List;
 
 @Service
 public class GamePlayerService {
+
   private final GamePlayerRepository gamePlayerRepository;
 
   public GamePlayerService(GamePlayerRepository gamePlayerRepository) {

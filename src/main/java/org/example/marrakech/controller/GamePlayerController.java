@@ -10,6 +10,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/game-players")
 public class GamePlayerController {
+
   private final GamePlayerService gamePlayerService;
 
   public GamePlayerController(GamePlayerService gamePlayerService) {

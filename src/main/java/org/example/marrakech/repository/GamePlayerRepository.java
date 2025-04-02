@@ -8,4 +8,5 @@ import java.util.List;
 public interface GamePlayerRepository extends JpaRepository<GamePlayer, GamePlayerId> {
   List<GamePlayer> findByGameId(Long gameId);
   List<GamePlayer> findByUserId(Long userId);
+  boolean existsByGameIdAndUserId(Long gameId, Long userId);
 }

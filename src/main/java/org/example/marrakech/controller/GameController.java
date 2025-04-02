@@ -11,6 +11,7 @@ import java.util.Optional;
 @RestController
 @RequestMapping("/games")
 public class GameController {
+
   private final GameService gameService;
 
   public GameController(GameService gameService) {
@@ -30,6 +31,7 @@ public class GameController {
 
   @PostMapping
   public ResponseEntity<Game> createGame(@RequestBody Game game) {
+    // При создании игры статус устанавливается как "waiting"
     return ResponseEntity.ok(gameService.createGame(game));
   }
 
