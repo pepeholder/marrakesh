@@ -1,5 +1,6 @@
 package org.example.marrakech.entity;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -14,29 +15,33 @@ import org.hibernate.type.SqlTypes;
 @Setter
 @NoArgsConstructor
 public class Game {
-
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   @Column(name = "game_id")
   private Long id;
 
   @Column(nullable = false)
-  private String status; // Возможные значения: waiting, in_progress, finished
+  private String status; // waiting, in_progress, finished
 
-  @JdbcTypeCode(SqlTypes.ARRAY) // Аннотация для работы с PostgreSQL массивами
+  @JdbcTypeCode(SqlTypes.ARRAY)
   @Column(name = "turn_order", columnDefinition = "integer[]", nullable = false)
-  private int[] turnOrder = new int[0]; // Гарантируем, что массив не будет NULL
+  private int[] turnOrder = new int[0];
 
+  // Ссылки на currentTurn оставляем, но убираем его из JSON, чтобы разорвать цикл
   @ManyToOne
   @JoinColumn(name = "current_turn")
+  @JsonBackReference  // Эта сторона не будет сериализована
   private User currentTurn;
 
   @Column(name = "assam_position_x", nullable = false)
-  private int assamPositionX = 0;
+  @ColumnDefault("0")
+  private int assamPositionX;
 
   @Column(name = "assam_position_y", nullable = false)
-  private int assamPositionY = 0;
+  @ColumnDefault("0")
+  private int assamPositionY;
 
   @Column(name = "assam_direction", nullable = false)
-  private String assamDirection = "up";
+  private String assamDirection;
 }
+

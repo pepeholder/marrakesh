@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
 import java.time.LocalDateTime;
 
 @Entity
@@ -15,6 +16,7 @@ public class Move {
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Column(name = "move_id")
   private Long moveId;
 
   @ManyToOne
@@ -25,12 +27,12 @@ public class Move {
   @JoinColumn(name = "user_id", nullable = false)
   private User user;
 
-  @Column(nullable = false)
+  @Column(name = "turn_number", nullable = false)
   private int turnNumber;
 
-  @Column(nullable = false)
+  @Column(name = "move_description", nullable = false)
   private String moveDescription;
 
-  @Column(nullable = false)
+  @Column(name = "timestamp", nullable = false)
   private LocalDateTime timestamp = LocalDateTime.now();
 }

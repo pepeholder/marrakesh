@@ -26,19 +26,19 @@ public class SecurityConfig {
 //        .build();
 //  }
 
-  /// для тестирования /api/lobby/**
+  /// разрешаем все запросы без аутентификации
   @Bean
   public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
     return http
         .csrf(AbstractHttpConfigurer::disable)
         .authorizeHttpRequests(auth -> auth
-            .requestMatchers("/api/auth/**", "/api/lobby/**").permitAll()
-            .anyRequest().authenticated()
+            .anyRequest().permitAll()
         )
         .formLogin(AbstractHttpConfigurer::disable)
         .httpBasic(AbstractHttpConfigurer::disable)
         .build();
   }
+
 
 
   @Bean
