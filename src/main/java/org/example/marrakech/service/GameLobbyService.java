@@ -8,8 +8,6 @@ import org.example.marrakech.repository.GameRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -34,10 +32,11 @@ public class GameLobbyService {
       newGame.setStatus("waiting");
 
       // Инициализируем стартовые параметры игры
-      newGame.setTurnOrder(new int[0]); // пустой массив вместо null
+      newGame.setTurnOrder(new int[0]);
       newGame.setAssamPositionX(0);
       newGame.setAssamPositionY(0);
       newGame.setAssamDirection("up");
+      newGame.setCurrentTurn(null);
 
       return gameRepository.save(newGame);
     });
@@ -51,11 +50,15 @@ public class GameLobbyService {
     GamePlayer gamePlayer = new GamePlayer(selectedGame, user, "red");
     gamePlayerRepository.save(gamePlayer);
 
+    // Если игра пустая, делаем этого игрока первым
+    if (selectedGame.getCurrentTurn() == null) {
+      selectedGame.setCurrentTurn(user);
+      gameRepository.save(selectedGame);
+    }
+
     // Обновляем состояние пользователя
     user.setPlaying(true);
     user.setCurrentGame(selectedGame);
-    // Если нужно, сохраняем изменения пользователя через userRepository
-    // userRepository.save(user);
 
     return selectedGame;
   }

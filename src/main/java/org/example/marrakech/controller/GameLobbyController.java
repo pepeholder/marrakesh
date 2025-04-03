@@ -19,9 +19,6 @@ public class GameLobbyController {
     this.userService = userService;
   }
 
-  // Простой эндпоинт для присоединения к игре
-  // В реальном приложении имя пользователя берется из SecurityContext,
-  // здесь для простоты передаем через параметр запроса.
   @PostMapping("/join")
   public ResponseEntity<?> joinGame(@RequestParam String username) {
     User user = userService.findByUsername(username);
