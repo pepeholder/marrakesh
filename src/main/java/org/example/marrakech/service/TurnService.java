@@ -84,6 +84,7 @@ public class TurnService {
     return currentUser;
   }
 
+  // TODO: тут кажется ерунда какая-то написано, надо будет вникнуть и исправить
   private void processCarpetPayment(Game game, User currentUser) {
     int finalX = game.getAssamPositionX();
     int finalY = game.getAssamPositionY();
@@ -136,6 +137,7 @@ public class TurnService {
       // Если игра только что стала заполненной (4 игрока) и статус "waiting", переключаем статус на "in_progress"
       if ("waiting".equals(game.getStatus()) && gamePlayerRepository.countByGameId(game.getId()) == 4) {
         game.setStatus("in_progress");
+        // TODO: написано, что дулируется код, надо будет отдельный метод создать и вызывать
         gameRepository.save(game);
         String currentTurnUsername = game.getCurrentTurn() != null ? game.getCurrentTurn().getUsername() : "none";
         GameStatusUpdateMessage update = new GameStatusUpdateMessage(game.getId(), game.getStatus(), currentTurnUsername);
