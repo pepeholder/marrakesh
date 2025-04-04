@@ -1,5 +1,6 @@
 package org.example.marrakech.service;
 
+import org.example.marrakech.dto.GameStatusUpdateMessage;
 import org.example.marrakech.entity.Carpet;
 import org.example.marrakech.entity.Game;
 import org.example.marrakech.entity.GamePlayer;
@@ -7,6 +8,7 @@ import org.example.marrakech.entity.User;
 import org.example.marrakech.repository.CarpetRepository;
 import org.example.marrakech.repository.GamePlayerRepository;
 import org.example.marrakech.repository.GameRepository;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,16 +21,19 @@ public class GameLobbyService {
   private final GameRepository gameRepository;
   private final GamePlayerRepository gamePlayerRepository;
   private final CarpetRepository carpetRepository;
+  private final SimpMessagingTemplate messagingTemplate;
 
-  // Задаём доступные цвета
+  // Доступные цвета для игроков (и их ковров)
   private static final List<String> AVAILABLE_COLORS = List.of("red", "blue", "green", "yellow");
 
   public GameLobbyService(GameRepository gameRepository,
                           GamePlayerRepository gamePlayerRepository,
-                          CarpetRepository carpetRepository) {
+                          CarpetRepository carpetRepository,
+                          SimpMessagingTemplate messagingTemplate) {
     this.gameRepository = gameRepository;
     this.gamePlayerRepository = gamePlayerRepository;
     this.carpetRepository = carpetRepository;
+    this.messagingTemplate = messagingTemplate;
   }
 
   @Transactional
@@ -64,7 +69,7 @@ public class GameLobbyService {
     Set<String> usedColors = existingPlayers.stream()
         .map(GamePlayer::getPlayerColor)
         .collect(Collectors.toSet());
-    // Доступные цвета — те, которых ещё нет
+    // Доступные цвета – те, которых ещё нет
     List<String> freeColors = AVAILABLE_COLORS.stream()
         .filter(color -> !usedColors.contains(color))
         .collect(Collectors.toList());
@@ -84,7 +89,7 @@ public class GameLobbyService {
     carpet.setColor(assignedColor);
     carpetRepository.save(carpet);
 
-    // Если игра пустая, делаем этого игрока текущим
+    // Если игрок — первый в игре, делаем его текущим
     if (gamePlayerRepository.countByGameId(selectedGame.getId()) == 1) {
       selectedGame.setCurrentTurn(user);
       gameRepository.save(selectedGame);
@@ -94,11 +99,22 @@ public class GameLobbyService {
     user.setPlaying(true);
     user.setCurrentGame(selectedGame);
 
-    // Если после добавления игрока общее число игроков стало 4, меняем статус игры на "in_progress"
+    // Если после добавления игрока общее число игроков стало 4, начинаем игру
     long playerCount = gamePlayerRepository.countByGameId(selectedGame.getId());
     if (playerCount == 4) {
       selectedGame.setStatus("in_progress");
       gameRepository.save(selectedGame);
+
+      // Рассылаем сообщение об изменении статуса игры через WebSocket
+      String currentTurnUsername = selectedGame.getCurrentTurn() != null
+          ? selectedGame.getCurrentTurn().getUsername()
+          : "none";
+      GameStatusUpdateMessage statusUpdate = new GameStatusUpdateMessage(
+          selectedGame.getId(),
+          selectedGame.getStatus(),
+          currentTurnUsername
+      );
+      messagingTemplate.convertAndSend("/topic/game/" + selectedGame.getId() + "/status", statusUpdate);
     }
 
     return selectedGame;
