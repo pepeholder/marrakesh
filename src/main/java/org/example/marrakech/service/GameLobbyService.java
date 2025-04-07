@@ -51,8 +51,8 @@ public class GameLobbyService {
 
       // Инициализируем стартовые параметры игры
       newGame.setTurnOrder(new int[0]);
-      newGame.setAssamPositionX(0);
-      newGame.setAssamPositionY(0);
+      newGame.setAssamPositionX(3);
+      newGame.setAssamPositionY(3);
       newGame.setAssamDirection("up");
       newGame.setCurrentTurn(null);
 

@@ -1,6 +1,7 @@
 package org.example.marrakech.entity;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIdentityInfo;
+import com.fasterxml.jackson.annotation.ObjectIdGenerators;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -14,7 +15,9 @@ import org.hibernate.type.SqlTypes;
 @Getter
 @Setter
 @NoArgsConstructor
+@JsonIdentityInfo(generator = ObjectIdGenerators.PropertyGenerator.class, property = "id")
 public class Game {
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   @Column(name = "game_id")
@@ -27,21 +30,18 @@ public class Game {
   @Column(name = "turn_order", columnDefinition = "integer[]", nullable = false)
   private int[] turnOrder = new int[0];
 
-  // Ссылки на currentTurn оставляем, но убираем его из JSON, чтобы разорвать цикл
   @ManyToOne
   @JoinColumn(name = "current_turn")
-  @JsonBackReference  // Эта сторона не будет сериализована
   private User currentTurn;
 
   @Column(name = "assam_position_x", nullable = false)
-  @ColumnDefault("0")
-  private int assamPositionX;
+  @ColumnDefault("3")
+  private int assamPositionX = 3;
 
   @Column(name = "assam_position_y", nullable = false)
-  @ColumnDefault("0")
-  private int assamPositionY;
+  @ColumnDefault("3")
+  private int assamPositionY = 3;
 
   @Column(name = "assam_direction", nullable = false)
-  private String assamDirection;
+  private String assamDirection = "up";
 }
-

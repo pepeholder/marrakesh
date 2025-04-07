@@ -1,10 +1,13 @@
 package org.example.marrakech.controller;
 
-import org.example.marrakech.dto.CarpetPlacementRequest;
+import org.example.marrakech.dto.CarpetPlacementAfterMoveRequest;
 import org.example.marrakech.entity.Carpet;
-import org.example.marrakech.entity.CarpetPosition;
+import org.example.marrakech.entity.Game;
+import org.example.marrakech.entity.User;
 import org.example.marrakech.repository.CarpetRepository;
+import org.example.marrakech.repository.GameRepository;
 import org.example.marrakech.service.CarpetService;
+import org.example.marrakech.service.UserService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,30 +17,44 @@ public class CarpetController {
 
   private final CarpetRepository carpetRepository;
   private final CarpetService carpetService;
+  private final UserService userService;
+  private final GameRepository gameRepository;
 
-  public CarpetController(CarpetRepository carpetRepository, CarpetService carpetService) {
+  public CarpetController(CarpetRepository carpetRepository,
+                          CarpetService carpetService,
+                          UserService userService,
+                          GameRepository gameRepository) {
     this.carpetRepository = carpetRepository;
     this.carpetService = carpetService;
+    this.userService = userService;
+    this.gameRepository = gameRepository;
   }
 
-  /**
-   * Размещает ковер по двум кликам.
-   * Пример запроса:
-   * {
-   *   "carpetId": 5,
-   *   "firstX": 3,
-   *   "firstY": 2,
-   *   "secondX": 3,
-   *   "secondY": 1
-   * }
-   */
-  @PostMapping("/place")
-  public ResponseEntity<?> placeCarpet(@RequestBody CarpetPlacementRequest request) {
-    Carpet carpet = carpetRepository.findById(request.getCarpetId())
-        .orElseThrow(() -> new IllegalArgumentException("Ковер не найден"));
+  @PostMapping("/placeAfterMove")
+  public ResponseEntity<?> placeCarpetAfterMove(@RequestBody CarpetPlacementAfterMoveRequest request) {
+    // Получаем игру
+    Game game = gameRepository.findById(request.getGameId())
+        .orElseThrow(() -> new IllegalArgumentException("Game not found"));
+    // Получаем пользователя по username
+    User user = userService.findByUsername(request.getUsername());
+    if (user == null) {
+      return ResponseEntity.badRequest().body("User not found");
+    }
+    // Проверяем, что запрос отправляет текущий игрок
+    if (!user.getId().equals(game.getCurrentTurn().getId())) {
+      return ResponseEntity.badRequest().body("It is not your turn");
+    }
+    // Извлекаем финальное положение Ассама из объекта Game
+    int finalX = game.getAssamPositionX();
+    int finalY = game.getAssamPositionY();
+
+    // Находим ковер текущего игрока
+    Carpet carpet = carpetRepository.findByGameAndOwner(game, user)
+        .orElseThrow(() -> new IllegalArgumentException("Carpet not found for current user"));
     try {
-      carpetService.placeCarpet(carpet, request.getFirstX(), request.getFirstY(), request.getSecondX(), request.getSecondY());
-      return ResponseEntity.ok("Ковер размещён успешно.");
+      carpetService.placeCarpetAfterMove(carpet, finalX, finalY,
+          request.getFirstX(), request.getFirstY(), request.getSecondX(), request.getSecondY());
+      return ResponseEntity.ok("Carpet placed successfully.");
     } catch (IllegalArgumentException e) {
       return ResponseEntity.badRequest().body(e.getMessage());
     }

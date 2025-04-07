@@ -1,6 +1,7 @@
 package org.example.marrakech.service;
 
 import org.example.marrakech.dto.GameStatusUpdateMessage;
+import org.example.marrakech.dto.MoveResponse;
 import org.example.marrakech.dto.TurnRequest;
 import org.example.marrakech.entity.Carpet;
 import org.example.marrakech.entity.CarpetPosition;
@@ -48,76 +49,60 @@ public class TurnService {
     this.messagingTemplate = messagingTemplate;
   }
 
+  /**
+   * Выполняет перемещение Ассама, генерирует бросок кубика и обрабатывает оплату за наступление на чужой ковёр.
+   * @param gameId идентификатор игры
+   * @param movementDirection выбранное направление ("up", "down", "left", "right")
+   * @return MoveResponse, содержащий обновлённое состояние игры и число, выпавшее на кубике.
+   */
   @Transactional
-  public Game completeTurn(TurnRequest request) {
-    // 1. Получаем игру и перемещаем Ассама
-    Game game = getGame(request.getGameId());
-    int diceRoll = gameService.rollDice();
-    gameService.moveAssam(game, request.getMovementDirection(), diceRoll);
-
-    // 2. Обработка оплаты за наступление на чужой ковёр
-    User currentUser = getCurrentUser(game);
-    processCarpetPayment(game, currentUser);
-
-    // 3. Размещение ковра текущим игроком
-    placeCarpetForCurrentUser(game, currentUser, request);
-
-    // 4. Смена хода
-    game = switchTurn(game);
-
-    // 5. Проверка завершения игры
-    checkGameCompletion(game);
-
-    return game;
-  }
-
-  private Game getGame(Long gameId) {
-    return gameRepository.findById(gameId)
+  public MoveResponse completeMove(Long gameId, String movementDirection) {
+    // Извлекаем игру
+    Game game = gameRepository.findById(gameId)
         .orElseThrow(() -> new IllegalArgumentException("Game not found"));
-  }
 
-  private User getCurrentUser(Game game) {
-    User currentUser = game.getCurrentTurn();
-    if (currentUser == null) {
-      throw new IllegalStateException("Current turn is not set in game");
-    }
-    return currentUser;
-  }
+    // Генерируем бросок кубика и перемещаем Ассама
+    int diceRoll = gameService.rollDice();
+    gameService.moveAssam(game, movementDirection, diceRoll);
+    gameRepository.save(game);
 
-  // TODO: тут кажется ерунда какая-то написано, надо будет вникнуть и исправить
-  private void processCarpetPayment(Game game, User currentUser) {
+    // Обработка оплаты за наступление на чужой ковёр (если применимо)
     int finalX = game.getAssamPositionX();
     int finalY = game.getAssamPositionY();
     Optional<CarpetPosition> cpOpt = carpetPositionRepository.findByGameAndPosition(game.getId(), finalX, finalY);
     if (cpOpt.isPresent()) {
       Carpet carpet = cpOpt.get().getCarpet();
       User carpetOwner = carpet.getOwner();
+      User currentUser = game.getCurrentTurn();
       if (!carpetOwner.getId().equals(currentUser.getId())) {
         int payment = carpetPositionRepository.findAllByCarpet(carpet).size();
-        GamePlayer activePlayerRecord = gamePlayerRepository.findByGameIdAndUserId(game.getId(), currentUser.getId())
+        GamePlayer activeRecord = gamePlayerRepository.findByGameIdAndUserId(game.getId(), currentUser.getId())
             .orElseThrow(() -> new IllegalStateException("Active player's record not found"));
         GamePlayer ownerRecord = gamePlayerRepository.findByGameIdAndUserId(game.getId(), carpetOwner.getId())
             .orElseThrow(() -> new IllegalStateException("Owner's record not found"));
-        activePlayerRecord.setCoins(activePlayerRecord.getCoins() - payment);
+        activeRecord.setCoins(activeRecord.getCoins() - payment);
         ownerRecord.setCoins(ownerRecord.getCoins() + payment);
-        if (activePlayerRecord.getCoins() <= 0) {
-          activePlayerRecord.setCoins(0);
+        if (activeRecord.getCoins() <= 0) {
+          activeRecord.setCoins(0);
           currentUser.setPlaying(false);
-          // Можно добавить дополнительную логику деактивации ковров
+          // Если игрок выбывает, его ковер удаляется
+          carpetRepository.findByGameAndOwner(game, currentUser)
+              .ifPresent(carpetRepository::delete);
         }
       }
     }
+
+    return new MoveResponse(game, diceRoll);
   }
 
-  private void placeCarpetForCurrentUser(Game game, User currentUser, TurnRequest request) {
-    Carpet carpet = carpetRepository.findByGameAndOwner(game, currentUser)
-        .orElseThrow(() -> new IllegalArgumentException("Carpet not found for current user"));
-    carpetService.placeCarpet(carpet, request.getFirstX(), request.getFirstY(),
-        request.getSecondX(), request.getSecondY());
-  }
-
-  private Game switchTurn(Game game) {
-    return gameTurnService.switchToNextTurn(game.getId());
+  /**
+   * Переключает текущий ход.
+   * @param gameId идентификатор игры
+   * @return обновлённое состояние игры с переключённым ходом
+   */
+  @Transactional
+  public Game switchTurn(Long gameId) {
+    return gameTurnService.switchToNextTurn(gameId);
   }
 
   private void checkGameCompletion(Game game) {
@@ -134,10 +119,8 @@ public class TurnService {
       GameStatusUpdateMessage finishUpdate = new GameStatusUpdateMessage(game.getId(), game.getStatus(), winnerName);
       messagingTemplate.convertAndSend("/topic/game/" + game.getId() + "/status", finishUpdate);
     } else {
-      // Если игра только что стала заполненной (4 игрока) и статус "waiting", переключаем статус на "in_progress"
       if ("waiting".equals(game.getStatus()) && gamePlayerRepository.countByGameId(game.getId()) == 4) {
         game.setStatus("in_progress");
-        // TODO: написано, что дулируется код, надо будет отдельный метод создать и вызывать
         gameRepository.save(game);
         String currentTurnUsername = game.getCurrentTurn() != null ? game.getCurrentTurn().getUsername() : "none";
         GameStatusUpdateMessage update = new GameStatusUpdateMessage(game.getId(), game.getStatus(), currentTurnUsername);
