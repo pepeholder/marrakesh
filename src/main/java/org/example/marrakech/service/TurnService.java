@@ -103,13 +103,13 @@ public class TurnService {
 
   /**
    * Расчитывает сумму оплаты как размер группы смежных клеток, на которых верхним слоем
-   * является тот же ковер.
+   * является тот же ковер, что и targetCarpet. При этом для каждой клетки ищется именно верхний ковер.
    *
    * @param gameId идентификатор игры.
-   * @param startX начальная клетка X.
-   * @param startY начальная клетка Y.
-   * @param targetCarpet целевой ковер (верхний ковер на клетке).
-   * @return размер группы клеток с ковром targetCarpet.
+   * @param startX координата X стартовой клетки.
+   * @param startY координата Y стартовой клетки.
+   * @param targetCarpet целевой ковер (верхний ковер на клетке, на которой завершился ход Ассама).
+   * @return число клеток в группе смежных с одинаковым верхним ковром targetCarpet.
    */
   private int calculatePayment(Long gameId, int startX, int startY, Carpet targetCarpet) {
     boolean[][] visited = new boolean[7][7];
@@ -123,11 +123,11 @@ public class TurnService {
       int[] current = queue.poll();
       int cx = current[0];
       int cy = current[1];
-
-      // Получаем верхний ковер для клетки (через findByGameAndPosition)
-      Optional<CarpetPosition> cp = carpetPositionRepository.findByGameAndPosition(gameId, cx, cy);
+      // Получаем верхний ковер на клетке, используя нативный метод
+      Optional<CarpetPosition> cp = carpetPositionRepository.findTopByGameAndPositionOrderByPlacementTurnDesc(gameId, cx, cy);
       if (cp.isPresent()) {
         Carpet currentCarpet = cp.get().getCarpet();
+        // Если верхний ковер совпадает с targetCarpet, учитываем эту клетку
         if (currentCarpet.getCarpetId().equals(targetCarpet.getCarpetId())) {
           count++;
           for (int[] dir : directions) {
