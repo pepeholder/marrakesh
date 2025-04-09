@@ -44,4 +44,8 @@ public class Game {
 
   @Column(name = "assam_direction", nullable = false)
   private String assamDirection = "up";
+
+  @Column(name = "current_move_number", nullable = false)
+  @ColumnDefault("1")
+  private int currentMoveNumber = 1;
 }

@@ -32,28 +32,30 @@ public class CarpetController {
 
   @PostMapping("/placeAfterMove")
   public ResponseEntity<?> placeCarpetAfterMove(@RequestBody CarpetPlacementAfterMoveRequest request) {
-    // Получаем игру
     Game game = gameRepository.findById(request.getGameId())
         .orElseThrow(() -> new IllegalArgumentException("Game not found"));
-    // Получаем пользователя по username
+
     User user = userService.findByUsername(request.getUsername());
     if (user == null) {
       return ResponseEntity.badRequest().body("User not found");
     }
-    // Проверяем, что запрос отправляет текущий игрок
+
     if (!user.getId().equals(game.getCurrentTurn().getId())) {
       return ResponseEntity.badRequest().body("It is not your turn");
     }
-    // Извлекаем финальное положение Ассама из объекта Game
+
     int finalX = game.getAssamPositionX();
     int finalY = game.getAssamPositionY();
 
-    // Находим ковер текущего игрока
     Carpet carpet = carpetRepository.findByGameAndOwner(game, user)
         .orElseThrow(() -> new IllegalArgumentException("Carpet not found for current user"));
     try {
-      carpetService.placeCarpetAfterMove(carpet, finalX, finalY,
-          request.getFirstX(), request.getFirstY(), request.getSecondX(), request.getSecondY());
+      carpetService.placeCarpetAfterMove(
+          carpet,
+          finalX, finalY,
+          request.getFirstX(), request.getFirstY(),
+          request.getSecondX(), request.getSecondY()
+      );
       return ResponseEntity.ok("Carpet placed successfully.");
     } catch (IllegalArgumentException e) {
       return ResponseEntity.badRequest().body(e.getMessage());

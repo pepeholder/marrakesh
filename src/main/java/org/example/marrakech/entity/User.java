@@ -12,9 +12,10 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class User {
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
-  @Column(name = "user_id")  // Явное указание имени столбца
+  @Column(name = "user_id")
   private Long id;
 
   @Column(unique = true, nullable = false)
@@ -27,16 +28,12 @@ public class User {
 
   @ManyToOne
   @JoinColumn(name = "current_game_id")
-  @JsonManagedReference  // С этой стороны сериализация будет происходить
+  @JsonManagedReference
   private Game currentGame;
-
-  private int totalCoins;
 
   public User(String username, String passwordHash) {
     this.username = username;
     this.passwordHash = passwordHash;
     this.isPlaying = false;
-    this.totalCoins = 0;
   }
 }
-

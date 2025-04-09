@@ -78,9 +78,12 @@ public class GameLobbyService {
     String assignedColor = freeColors.isEmpty() ? AVAILABLE_COLORS.get(0)
         : freeColors.get(new Random().nextInt(freeColors.size()));
 
-    // Добавляем пользователя в игру с назначенным цветом
+    // Определяем текущий порядок вхождения игроков
+    int currentPlayerCount = existingPlayers.size();
     GamePlayer gamePlayer = new GamePlayer(selectedGame, user, assignedColor);
+    gamePlayer.setTurnOrder(currentPlayerCount);
     gamePlayerRepository.save(gamePlayer);
+
 
     // Создаём запись для ковра с тем же цветом
     Carpet carpet = new Carpet();

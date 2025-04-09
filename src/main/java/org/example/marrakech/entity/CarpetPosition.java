@@ -15,9 +15,11 @@ public class CarpetPosition {
   @EmbeddedId
   private CarpetPositionId id;
 
-  // Связь с ковром
   @MapsId("carpetId")
   @ManyToOne
   @JoinColumn(name = "carpet_id", nullable = false)
   private Carpet carpet;
+
+  @Column(name = "placement_turn", nullable = false)
+  private Integer placementTurn;
 }

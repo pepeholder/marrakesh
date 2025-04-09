@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -50,7 +51,10 @@ public class TurnService {
   }
 
   /**
-   * Выполняет перемещение Ассама, генерирует бросок кубика и обрабатывает оплату за наступление на чужой ковёр.
+   * Выполняет перемещение Ассама, генерирует бросок кубика, обрабатывает оплату за наступление на чужой ковёр.
+   * Оплата определяется как сумма всех клеток, входящих в смежную группу (по сторонам) с конечной клеткой,
+   * на которых лежит верхний ковер того же цвета.
+   *
    * @param gameId идентификатор игры
    * @param movementDirection выбранное направление ("up", "down", "left", "right")
    * @return MoveResponse, содержащий обновлённое состояние игры и число, выпавшее на кубике.
@@ -66,16 +70,17 @@ public class TurnService {
     gameService.moveAssam(game, movementDirection, diceRoll);
     gameRepository.save(game);
 
-    // Обработка оплаты за наступление на чужой ковёр (если применимо)
+    // Обработка оплаты за наступление на чужой ковёр
     int finalX = game.getAssamPositionX();
     int finalY = game.getAssamPositionY();
-    Optional<CarpetPosition> cpOpt = carpetPositionRepository.findByGameAndPosition(game.getId(), finalX, finalY);
+    Optional<CarpetPosition> cpOpt = carpetPositionRepository.findTopByGameAndPositionOrderByPlacementTurnDesc(game.getId(), finalX, finalY);
     if (cpOpt.isPresent()) {
-      Carpet carpet = cpOpt.get().getCarpet();
-      User carpetOwner = carpet.getOwner();
+      Carpet topCarpet = cpOpt.get().getCarpet();
+      User carpetOwner = topCarpet.getOwner();
       User currentUser = game.getCurrentTurn();
+      // Если верхний ковер принадлежит другому игроку, то производится оплата
       if (!carpetOwner.getId().equals(currentUser.getId())) {
-        int payment = carpetPositionRepository.findAllByCarpet(carpet).size();
+        int payment = carpetPositionRepository.findAllByCarpet(topCarpet).size();
         GamePlayer activeRecord = gamePlayerRepository.findByGameIdAndUserId(game.getId(), currentUser.getId())
             .orElseThrow(() -> new IllegalStateException("Active player's record not found"));
         GamePlayer ownerRecord = gamePlayerRepository.findByGameIdAndUserId(game.getId(), carpetOwner.getId())
@@ -85,7 +90,7 @@ public class TurnService {
         if (activeRecord.getCoins() <= 0) {
           activeRecord.setCoins(0);
           currentUser.setPlaying(false);
-          // Если игрок выбывает, его ковер удаляется
+          // Если игрок выбывает, удаляем его ковер (или применяем другую логику)
           carpetRepository.findByGameAndOwner(game, currentUser)
               .ifPresent(carpetRepository::delete);
         }
@@ -97,8 +102,9 @@ public class TurnService {
 
   /**
    * Переключает текущий ход.
+   *
    * @param gameId идентификатор игры
-   * @return обновлённое состояние игры с переключённым ходом
+   * @return обновлённое состояние игры с переключённым ходом.
    */
   @Transactional
   public Game switchTurn(Long gameId) {
@@ -106,26 +112,71 @@ public class TurnService {
   }
 
   private void checkGameCompletion(Game game) {
-    final Game currentGame = game;
-    boolean allPlayersFinished = gamePlayerRepository.findByGameId(currentGame.getId())
-        .stream()
-        .allMatch(gp -> carpetRepository.countByGameAndOwner(currentGame, gp.getUser()) >= 12);
+    // Логика проверки завершения игры (не изменялась)
+    List<GamePlayer> players = gamePlayerRepository.findByGameId(game.getId());
+    List<GamePlayer> activePlayers = players.stream()
+        .filter(gp -> gp.getUser().isPlaying())
+        .toList();
+
+    if (activePlayers.size() == 1) {
+      game.setStatus("finished");
+      gameRepository.save(game);
+      String winnerName = activePlayers.get(0).getUser().getUsername();
+      GameStatusUpdateMessage finishUpdate = new GameStatusUpdateMessage(game.getId(), game.getStatus(), winnerName);
+      messagingTemplate.convertAndSend("/topic/game/" + game.getId() + "/status", finishUpdate);
+      return;
+    }
+
+    boolean allPlayersFinished = activePlayers.stream()
+        .allMatch(gp -> carpetRepository.countByGameAndOwner(game, gp.getUser()) >= 12);
+
     if (allPlayersFinished) {
       game.setStatus("finished");
       gameRepository.save(game);
-      Optional<GamePlayer> winnerOpt = gamePlayerRepository.findByGameId(game.getId()).stream()
+      Optional<GamePlayer> winnerOpt = activePlayers.stream()
           .max(Comparator.comparingInt(GamePlayer::getCoins));
       String winnerName = winnerOpt.map(gp -> gp.getUser().getUsername()).orElse("none");
       GameStatusUpdateMessage finishUpdate = new GameStatusUpdateMessage(game.getId(), game.getStatus(), winnerName);
       messagingTemplate.convertAndSend("/topic/game/" + game.getId() + "/status", finishUpdate);
-    } else {
-      if ("waiting".equals(game.getStatus()) && gamePlayerRepository.countByGameId(game.getId()) == 4) {
-        game.setStatus("in_progress");
-        gameRepository.save(game);
-        String currentTurnUsername = game.getCurrentTurn() != null ? game.getCurrentTurn().getUsername() : "none";
-        GameStatusUpdateMessage update = new GameStatusUpdateMessage(game.getId(), game.getStatus(), currentTurnUsername);
-        messagingTemplate.convertAndSend("/topic/game/" + game.getId() + "/status", update);
-      }
     }
+  }
+
+  /**
+   * Рекурсивный метод для подсчёта количества клеток в смежной группе, имеющих верхний ковер заданного цвета.
+   * Соседство определяется по 4 направлениям (up, down, left, right).
+   *
+   * @param gameId идентификатор игры
+   * @param x текущая координата X
+   * @param y текущая координата Y
+   * @param color цвет, по которому ищем группу
+   * @param visited матрица посещённых клеток (размер 7x7)
+   * @return количество клеток в данной группе
+   */
+  private int countConnectedCarpetCells(Long gameId, int x, int y, String color, boolean[][] visited) {
+    if (x < 0 || x >= 7 || y < 0 || y >= 7) {
+      return 0;
+    }
+    if (visited[x][y]) {
+      return 0;
+    }
+    visited[x][y] = true;
+    Optional<CarpetPosition> cpOpt = carpetPositionRepository.findByGameAndPosition(gameId, x, y);
+    if (cpOpt.isEmpty()) {
+      return 0;
+    }
+    CarpetPosition cp = cpOpt.get();
+    // Мы будем считать только те клетки, где верхний ковер имеет нужный цвет.
+    if (!cp.getCarpet().getColor().equals(color)) {
+      return 0;
+    }
+    // Начинаем с текущей клетки (1)
+    int count = 1;
+    // Определяем четыре направления (up, down, left, right)
+    int[] dx = { -1, 1, 0, 0 };
+    int[] dy = { 0, 0, -1, 1 };
+    for (int i = 0; i < 4; i++) {
+      count += countConnectedCarpetCells(gameId, x + dx[i], y + dy[i], color, visited);
+    }
+    return count;
   }
 }

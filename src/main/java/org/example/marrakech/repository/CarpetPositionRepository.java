@@ -12,44 +12,39 @@ import java.util.Optional;
 
 public interface CarpetPositionRepository extends JpaRepository<CarpetPosition, CarpetPositionId> {
 
-  // Получить верхний ковер на клетке (по gameId и координатам)
-  @Query("""
-      SELECT cp
-      FROM CarpetPosition cp
-      WHERE cp.id.positionX = :x
-        AND cp.id.positionY = :y
-        AND cp.carpet.game.id = :gameId
-      ORDER BY cp.carpet.carpetId DESC
-      """)
-  Optional<CarpetPosition> findTopByGameAndPosition(@Param("gameId") Long gameId,
-                                                    @Param("x") int x,
-                                                    @Param("y") int y);
+  // Возвращает верхнюю запись на клетке, используя нативный SQL
+  @Query(value = "SELECT * FROM carpet_positions cp " +
+      "WHERE cp.position_x = :positionX " +
+      "  AND cp.position_y = :positionY " +
+      "  AND cp.carpet_id IN (SELECT c.carpet_id FROM carpets c WHERE c.game_id = :gameId) " +
+      "ORDER BY cp.placement_turn DESC LIMIT 1", nativeQuery = true)
+  Optional<CarpetPosition> findTopByGameAndPositionOrderByPlacementTurnDesc(
+      @Param("gameId") Long gameId,
+      @Param("positionX") int positionX,
+      @Param("positionY") int positionY);
 
-  // Получить все ковры на клетке в порядке наложения (снизу вверх)
-  @Query("""
-      SELECT cp
-      FROM CarpetPosition cp
-      WHERE cp.id.positionX = :x
-        AND cp.id.positionY = :y
-        AND cp.carpet.game.id = :gameId
-      ORDER BY cp.carpet.carpetId ASC
-      """)
-  List<CarpetPosition> findAllByGameAndPositionOrdered(@Param("gameId") Long gameId,
-                                                       @Param("x") int x,
-                                                       @Param("y") int y);
+  // Возвращает все записи на клетке, отсортированные по placement_turn по возрастанию
+  @Query(value = "SELECT * FROM carpet_positions cp " +
+      "WHERE cp.position_x = :positionX " +
+      "  AND cp.position_y = :positionY " +
+      "  AND cp.carpet_id IN (SELECT c.carpet_id FROM carpets c WHERE c.game_id = :gameId) " +
+      "ORDER BY cp.placement_turn ASC", nativeQuery = true)
+  List<CarpetPosition> findAllByGameAndPositionOrdered(
+      @Param("gameId") Long gameId,
+      @Param("positionX") int positionX,
+      @Param("positionY") int positionY);
 
-  // Найти ковёр по координате (любой, без гарантии порядка)
-  @Query("""
-      SELECT cp
-      FROM CarpetPosition cp
-      WHERE cp.id.positionX = :x
-        AND cp.id.positionY = :y
-        AND cp.carpet.game.id = :gameId
-      """)
-  Optional<CarpetPosition> findByGameAndPosition(@Param("gameId") Long gameId,
-                                                 @Param("x") int x,
-                                                 @Param("y") int y);
+  // Возвращает любую запись на заданной клетке (без сортировки)
+  @Query(value = "SELECT * FROM carpet_positions cp " +
+      "WHERE cp.position_x = :positionX " +
+      "  AND cp.position_y = :positionY " +
+      "  AND cp.carpet_id IN (SELECT c.carpet_id FROM carpets c WHERE c.game_id = :gameId) " +
+      "LIMIT 1", nativeQuery = true)
+  Optional<CarpetPosition> findByGameAndPosition(
+      @Param("gameId") Long gameId,
+      @Param("positionX") int positionX,
+      @Param("positionY") int positionY);
 
-  // Все позиции заданного ковра
+  // Получает все записи для заданного ковра
   List<CarpetPosition> findAllByCarpet(Carpet carpet);
 }

@@ -29,6 +29,9 @@ public class GamePlayer {
   @Column(name = "coins", nullable = false)
   private int coins = 30;
 
+  @Column(name = "turn_order")
+  private int turnOrder;
+
   public GamePlayer() {}
 
   public GamePlayer(Game game, User user, String playerColor) {

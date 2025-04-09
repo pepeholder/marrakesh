@@ -12,4 +12,5 @@ public interface GamePlayerRepository extends JpaRepository<GamePlayer, GamePlay
   Optional<GamePlayer> findByGameIdAndUserId(Long gameId, Long userId);
   boolean existsByGameIdAndUserId(Long gameId, Long userId);
   long countByGameId(Long gameId);
+  List<GamePlayer> findByGameIdOrderByTurnOrderAsc(Long gameId);
 }
