@@ -20,7 +20,9 @@ public class GameTurnService {
   private final GamePlayerRepository gamePlayerRepository;
   private final SimpMessagingTemplate messagingTemplate;
 
-  public GameTurnService(GameRepository gameRepository, GamePlayerRepository gamePlayerRepository, SimpMessagingTemplate messagingTemplate) {
+  public GameTurnService(GameRepository gameRepository,
+                         GamePlayerRepository gamePlayerRepository,
+                         SimpMessagingTemplate messagingTemplate) {
     this.gameRepository = gameRepository;
     this.gamePlayerRepository = gamePlayerRepository;
     this.messagingTemplate = messagingTemplate;
@@ -28,24 +30,23 @@ public class GameTurnService {
 
   @Transactional
   public Game switchToNextTurn(Long gameId) {
-    Optional<Game> optionalGame = gameRepository.findById(gameId);
-    if (optionalGame.isEmpty()) {
-      throw new IllegalArgumentException("Game not found with id " + gameId);
-    }
-    Game game = optionalGame.get();
+    // Получаем игру по id
+    Game game = gameRepository.findById(gameId)
+        .orElseThrow(() -> new IllegalArgumentException("Game not found with id " + gameId));
 
-    // Получаем игроков, отсортированных по порядку хода
+    // Получаем игроков, отсортированных по turnOrder
     List<GamePlayer> players = gamePlayerRepository.findByGameIdOrderByTurnOrderAsc(gameId);
     if (players.isEmpty()) {
       throw new IllegalArgumentException("No players in game");
     }
 
+    // Определяем текущего игрока
     User currentTurn = game.getCurrentTurn();
     if (currentTurn == null) {
-      // Если текущий игрок не задан — назначаем первого
+      // Если текущий игрок не установлен, назначаем первого в списке
       game.setCurrentTurn(players.get(0).getUser());
     } else {
-      // Определяем индекс текущего игрока
+      // Находим индекс текущего игрока
       int currentIndex = -1;
       for (int i = 0; i < players.size(); i++) {
         if (players.get(i).getUser().getId().equals(currentTurn.getId())) {
@@ -53,14 +54,15 @@ public class GameTurnService {
           break;
         }
       }
-
-      // Переключаем на следующего игрока по циклу
+      // Переключаем на следующего игрока циклически
       int nextIndex = (currentIndex + 1) % players.size();
       game.setCurrentTurn(players.get(nextIndex).getUser());
     }
 
+    // Увеличиваем глобальный номер хода в игре
     game.setCurrentMoveNumber(game.getCurrentMoveNumber() + 1);
 
+    // Формируем сообщение для WebSocket
     TurnUpdateMessage message = new TurnUpdateMessage();
     message.setGameId(game.getId());
     message.setCurrentPlayerUsername(game.getCurrentTurn().getUsername());
