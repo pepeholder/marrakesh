@@ -1,5 +1,6 @@
 package org.example.marrakech.integration.controller;
 
+import jakarta.transaction.Transactional;
 import org.example.marrakech.dto.UserDTO;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +13,7 @@ import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@Transactional
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 public class AuthControllerIntegrationTest {
 
@@ -28,8 +30,8 @@ public class AuthControllerIntegrationTest {
   @Test
   public void testRegisterUser_Success() {
     UserDTO user = new UserDTO();
-    user.setUsername("testuser1");
-    user.setPassword("testpass1");
+    user.setUsername("testuser3");
+    user.setPassword("testpass3");
 
     HttpHeaders headers = new HttpHeaders();
     headers.setContentType(MediaType.APPLICATION_JSON);

@@ -15,7 +15,6 @@ import org.springframework.stereotype.Service;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 @Service
 public class GameCompletionService {
@@ -45,7 +44,7 @@ public class GameCompletionService {
     List<GamePlayer> players = gamePlayerRepository.findByGameId(game.getId());
     List<GamePlayer> activePlayers = players.stream()
         .filter(gp -> gp.getUser().isPlaying())
-        .collect(Collectors.toList());
+        .toList();
 
     // Если активных игроков меньше одного, ничего не делаем
     if (activePlayers.isEmpty()) {
@@ -54,7 +53,7 @@ public class GameCompletionService {
 
     // Если остался только один активный игрок, завершаем игру
     if (activePlayers.size() == 1) {
-      finishGame(game, activePlayers.get(0).getUser().getUsername());
+      finishGame(game, activePlayers.getFirst().getUser().getUsername());
       return;
     }
 

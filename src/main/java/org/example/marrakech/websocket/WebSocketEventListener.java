@@ -4,7 +4,6 @@ import org.example.marrakech.entity.Game;
 import org.example.marrakech.entity.GamePlayer;
 import org.example.marrakech.entity.User;
 import org.example.marrakech.repository.GamePlayerRepository;
-import org.example.marrakech.repository.GameRepository;
 import org.example.marrakech.repository.UserRepository;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -17,16 +16,13 @@ import java.util.Optional;
 public class WebSocketEventListener {
 
   private final UserRepository userRepository;
-  private final GameRepository gameRepository;
   private final GamePlayerRepository gamePlayerRepository;
   private final SimpMessagingTemplate messagingTemplate;
 
   public WebSocketEventListener(UserRepository userRepository,
-                                GameRepository gameRepository,
                                 GamePlayerRepository gamePlayerRepository,
                                 SimpMessagingTemplate messagingTemplate) {
     this.userRepository = userRepository;
-    this.gameRepository = gameRepository;
     this.gamePlayerRepository = gamePlayerRepository;
     this.messagingTemplate = messagingTemplate;
   }
