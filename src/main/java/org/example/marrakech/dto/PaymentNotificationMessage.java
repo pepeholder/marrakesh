@@ -5,13 +5,11 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
-@NoArgsConstructor
 @AllArgsConstructor
-public class TurnRequest {
+@NoArgsConstructor
+public class PaymentNotificationMessage {
   private Long gameId;
-  private String movementDirection;
-  private int firstX;
-  private int firstY;
-  private int secondX;
-  private int secondY;
+  private String payerUsername;
+  private String payeeUsername;
+  private int amount;
 }

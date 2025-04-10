@@ -5,12 +5,14 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-@Getter
 @Setter
+@Getter
 @NoArgsConstructor
 @AllArgsConstructor
-public class TurnUpdateMessage {
-  private Long gameId;
-  private String currentPlayerUsername;
-  private int moveNumber;
+public class PlayerScore {
+  private String username;
+  private int coins;
+  private int visibleCarpetTiles;
+  private int totalScore;
+  private int place;
 }

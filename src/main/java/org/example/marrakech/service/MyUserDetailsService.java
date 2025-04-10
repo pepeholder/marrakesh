@@ -20,7 +20,7 @@ public class MyUserDetailsService implements UserDetailsService {
   public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
     User appUser = userRepository.findByUsername(username)
         .orElseThrow(() -> new UsernameNotFoundException("User not found"));
-    // Построим UserDetails с простой ролью USER. При необходимости можно добавить роли.
+    // Построим UserDetails с простой ролью USER
     return org.springframework.security.core.userdetails.User
         .withUsername(appUser.getUsername())
         .password(appUser.getPasswordHash())

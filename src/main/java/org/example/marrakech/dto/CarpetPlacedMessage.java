@@ -9,8 +9,11 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class TurnUpdateMessage {
-  private Long gameId;
-  private String currentPlayerUsername;
-  private int moveNumber;
+public class CarpetPlacedMessage {
+  private int firstX;
+  private int firstY;
+  private int secondX;
+  private int secondY;
+  private String color;
+  private String username;
 }

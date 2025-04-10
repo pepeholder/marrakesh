@@ -10,6 +10,9 @@ import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Entity
 @Table(name = "games")
 @Getter
@@ -25,10 +28,6 @@ public class Game {
 
   @Column(nullable = false)
   private String status; // waiting, in_progress, finished
-
-  @JdbcTypeCode(SqlTypes.ARRAY)
-  @Column(name = "turn_order", columnDefinition = "integer[]", nullable = false)
-  private int[] turnOrder = new int[0];
 
   @ManyToOne
   @JoinColumn(name = "current_turn")
@@ -48,4 +47,7 @@ public class Game {
   @Column(name = "current_move_number", nullable = false)
   @ColumnDefault("1")
   private int currentMoveNumber = 1;
+
+  @OneToMany(mappedBy = "game", cascade = CascadeType.ALL, orphanRemoval = true)
+  private List<GamePlayer> players = new ArrayList<>();
 }

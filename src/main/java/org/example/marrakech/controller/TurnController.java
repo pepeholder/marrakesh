@@ -28,7 +28,6 @@ public class TurnController {
       MoveResponse response = turnService.completeMove(gameId, movementDirection);
       return ResponseEntity.ok(response);
     } catch (IllegalArgumentException e) {
-      // Отправляем сообщение об ошибке во фронтенд
       return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
     }
   }

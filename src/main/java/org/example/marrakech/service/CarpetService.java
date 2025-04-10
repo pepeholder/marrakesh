@@ -1,9 +1,11 @@
 package org.example.marrakech.service;
 
+import org.example.marrakech.dto.CarpetPlacedMessage;
 import org.example.marrakech.entity.Carpet;
 import org.example.marrakech.entity.CarpetPosition;
 import org.example.marrakech.entity.CarpetPositionId;
 import org.example.marrakech.repository.CarpetPositionRepository;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,51 +15,48 @@ import java.util.Optional;
 public class CarpetService {
 
   private final CarpetPositionRepository carpetPositionRepository;
+  private final SimpMessagingTemplate messagingTemplate;
 
-  public CarpetService(CarpetPositionRepository carpetPositionRepository) {
+  public CarpetService(CarpetPositionRepository carpetPositionRepository, SimpMessagingTemplate messagingTemplate) {
     this.carpetPositionRepository = carpetPositionRepository;
+    this.messagingTemplate = messagingTemplate;
   }
 
   /**
-   * Размещает ковер (размер 2x1) по выбору игрока с учётом правил наложения.
-   * placementTurn теперь берется автоматически из объекта Game.
+   * Размещает ковер (размер 2x1) по выбору игрока с учётом правил наложения
    *
-   * @param carpet  Ковер, для которого задается позиция (уже создан, содержит carpetId)
-   * @param firstX  Координата X первой выбранной клетки.
-   * @param firstY  Координата Y первой выбранной клетки.
-   * @param secondX Координата X второй выбранной клетки.
-   * @param secondY Координата Y второй выбранной клетки.
-   * @throws IllegalArgumentException если клетки не соседние, находятся вне поля или нарушены правила наложения.
+   * @param carpet  Ковер, для которого задается позиция
+   * @param firstX  Координата x первой выбранной клетки
+   * @param firstY  Координата y первой выбранной клетки
+   * @param secondX Координата x второй выбранной клетки
+   * @param secondY Координата y второй выбранной клетки
+   * @throws IllegalArgumentException если клетки не соседние, находятся вне поля или нарушены правила наложения
    */
   @Transactional
   public void placeCarpet(Carpet carpet, int firstX, int firstY, int secondX, int secondY) {
-    // Проверяем, что выбранные клетки различны
     if (firstX == secondX && firstY == secondY) {
-      throw new IllegalArgumentException("Выбраны одинаковые клетки.");
+      throw new IllegalArgumentException("Выбраны одинаковые клетки");
     }
-    // Проверяем соседство выбранных клеток
+
     if (!isAdjacent(firstX, firstY, secondX, secondY)) {
-      throw new IllegalArgumentException("Клетки должны быть соседними по стороне.");
+      throw new IllegalArgumentException("Клетки должны быть соседними по стороне");
     }
-    // Проверяем допустимость координат (поле 7x7)
+
     if (!isValidCoordinate(firstX, firstY) || !isValidCoordinate(secondX, secondY)) {
-      throw new IllegalArgumentException("Клетки вне поля 7x7.");
+      throw new IllegalArgumentException("Клетки вне поля 7x7");
     }
 
     Long gameId = carpet.getGame().getId();
-    // Получаем номер хода из объекта Game (currentMoveNumber)
     int placementTurn = carpet.getGame().getCurrentMoveNumber();
     if (placementTurn <= 0) {
-      throw new IllegalArgumentException("Номер хода (currentMoveNumber) должен быть положительным.");
+      throw new IllegalArgumentException("Номер хода (currentMoveNumber) должен быть положительным");
     }
 
     // Проверяем правила наложения для каждой выбранной клетки
     checkOverlayRules(carpet, gameId, firstX, firstY);
     checkOverlayRules(carpet, gameId, secondX, secondY);
 
-    // Дополнительная проверка: если обе клетки уже заняты верхними коврами,
-    // и они принадлежат одному и тому же ковру, размещённому в одном ходу,
-    // то новый ковер полностью перекроет чужой – запрещается.
+    // Проверяем, что выбранные клетки не накрыты целым ковром другого игрока
     Optional<CarpetPosition> topPos1 = carpetPositionRepository.findTopByGameAndPositionOrderByPlacementTurnDesc(gameId, firstX, firstY);
     Optional<CarpetPosition> topPos2 = carpetPositionRepository.findTopByGameAndPositionOrderByPlacementTurnDesc(gameId, secondX, secondY);
     if (topPos1.isPresent() && topPos2.isPresent()) {
@@ -67,7 +66,7 @@ public class CarpetService {
         int turn1 = topPos1.get().getPlacementTurn();
         int turn2 = topPos2.get().getPlacementTurn();
         if (turn1 == turn2) {
-          throw new IllegalArgumentException("Нельзя полностью перекрыть один и тот же ковёр.");
+          throw new IllegalArgumentException("Нельзя полностью перекрыть один и тот же ковёр");
         }
       }
     }
@@ -84,25 +83,35 @@ public class CarpetService {
    * Проверяет, что ни одна из выбранных клеток не совпадает с позицией Ассама,
    * и что первая выбранная клетка является соседней с конечной позицией Ассама.
    *
-   * @param carpet  Ковер, принадлежащий текущему игроку.
-   * @param finalX  Конечная позиция Ассама по X (из объекта Game).
-   * @param finalY  Конечная позиция Ассама по Y (из объекта Game).
-   * @param firstX  Координата X первой выбранной клетки.
-   * @param firstY  Координата Y первой выбранной клетки.
-   * @param secondX Координата X второй выбранной клетки.
-   * @param secondY Координата Y второй выбранной клетки.
+   * @param carpet  Ковер, принадлежащий текущему игроку
+   * @param finalX  Конечная позиция Ассама по x
+   * @param finalY  Конечная позиция Ассама по y
+   * @param firstX  Координата x первой выбранной клетки
+   * @param firstY  Координата y первой выбранной клетки
+   * @param secondX Координата x второй выбранной клетки
+   * @param secondY Координата y второй выбранной клетки
    */
   public void placeCarpetAfterMove(Carpet carpet, int finalX, int finalY,
                                    int firstX, int firstY, int secondX, int secondY) {
-    // Запрещаем размещать ковер на клетке, где находится Ассам
+
     if ((firstX == finalX && firstY == finalY) || (secondX == finalX && secondY == finalY)) {
-      throw new IllegalArgumentException("Нельзя размещать ковёр на клетке, где находится Ассам.");
+      throw new IllegalArgumentException("Нельзя размещать ковёр на клетке, где находится Ассам");
     }
-    // Первая клетка должна быть соседней с конечной позицией Ассама
+
     if (!isAdjacent(finalX, finalY, firstX, firstY)) {
-      throw new IllegalArgumentException("Первая клетка должна быть соседней с конечной позицией Ассама.");
+      throw new IllegalArgumentException("Первая клетка должна быть соседней с конечной позицией Ассама");
     }
     placeCarpet(carpet, firstX, firstY, secondX, secondY);
+
+    // уведомление WebSocket
+    CarpetPlacedMessage message = new CarpetPlacedMessage(
+        firstX, firstY,
+        secondX, secondY,
+        carpet.getColor(),
+        carpet.getOwner().getUsername()
+    );
+    messagingTemplate.convertAndSend("/topic/game/" + carpet.getGame().getId() + "/carpet", message);
+
   }
 
   private CarpetPosition createCarpetPosition(Carpet carpet, int x, int y, int placementTurn) {
@@ -115,20 +124,19 @@ public class CarpetService {
   }
 
   /**
-   * Проверяет, можно ли разместить ковер на данной клетке с учётом уже размещённых.
-   * Если на клетке уже лежит верхний ковер, и он принадлежит тому же владельцу, размещение запрещается.
+   * Проверяет, лежит ли на выбранной клетке ковёр игрока
    *
-   * @param carpet Ковер, который кладется.
-   * @param gameId Идентификатор игры.
-   * @param x      Координата клетки.
-   * @param y      Координата клетки.
+   * @param carpet Ковер, который кладется
+   * @param gameId Идентификатор игры
+   * @param x      Координата x клетки
+   * @param y      Координата y клетки
    */
   private void checkOverlayRules(Carpet carpet, Long gameId, int x, int y) {
     Optional<CarpetPosition> existingOpt = carpetPositionRepository.findTopByGameAndPositionOrderByPlacementTurnDesc(gameId, x, y);
     if (existingOpt.isPresent()) {
       Carpet topCarpet = existingOpt.get().getCarpet();
       if (topCarpet.getOwner().getId().equals(carpet.getOwner().getId())) {
-        throw new IllegalArgumentException("Нельзя размещать ковёр на клетке, где сверху лежит ваш собственный ковёр.");
+        throw new IllegalArgumentException("Нельзя размещать ковёр на клетке, где сверху лежит ваш собственный ковёр");
       }
     }
   }

@@ -41,7 +41,6 @@ public class GameController {
     if (existingGame.isPresent()) {
       Game game = existingGame.get();
       game.setStatus(updatedGame.getStatus());
-      game.setTurnOrder(updatedGame.getTurnOrder());
       game.setAssamPositionX(updatedGame.getAssamPositionX());
       game.setAssamPositionY(updatedGame.getAssamPositionY());
       game.setAssamDirection(updatedGame.getAssamDirection());

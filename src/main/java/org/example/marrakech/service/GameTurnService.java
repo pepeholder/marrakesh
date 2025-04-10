@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Optional;
 
 @Service
 public class GameTurnService {
@@ -30,39 +29,53 @@ public class GameTurnService {
 
   @Transactional
   public Game switchToNextTurn(Long gameId) {
-    // Получаем игру по id
-    Game game = gameRepository.findById(gameId)
-        .orElseThrow(() -> new IllegalArgumentException("Game not found with id " + gameId));
+    Game game = getGameById(gameId);
+    List<GamePlayer> players = getOrderedGamePlayers(gameId);
+    updateCurrentTurn(game, players);
+    game.setCurrentMoveNumber(game.getCurrentMoveNumber() + 1);
+    notifyPlayersAboutTurn(game);
 
-    // Получаем игроков, отсортированных по turnOrder
+    return gameRepository.save(game);
+  }
+
+  private Game getGameById(Long gameId) {
+    return gameRepository.findById(gameId)
+        .orElseThrow(() -> new IllegalArgumentException("Не найдена игра с id " + gameId));
+  }
+
+  private List<GamePlayer> getOrderedGamePlayers(Long gameId) {
     List<GamePlayer> players = gamePlayerRepository.findByGameIdOrderByTurnOrderAsc(gameId);
     if (players.isEmpty()) {
-      throw new IllegalArgumentException("No players in game");
+      throw new IllegalArgumentException("Нет игроков в игре");
     }
 
-    // Определяем текущего игрока
+    return players;
+  }
+
+  private void updateCurrentTurn(Game game, List<GamePlayer> players) {
     User currentTurn = game.getCurrentTurn();
+
     if (currentTurn == null) {
-      // Если текущий игрок не установлен, назначаем первого в списке
-      game.setCurrentTurn(players.get(0).getUser());
-    } else {
-      // Находим индекс текущего игрока
-      int currentIndex = -1;
-      for (int i = 0; i < players.size(); i++) {
-        if (players.get(i).getUser().getId().equals(currentTurn.getId())) {
-          currentIndex = i;
-          break;
-        }
-      }
-      // Переключаем на следующего игрока циклически
-      int nextIndex = (currentIndex + 1) % players.size();
-      game.setCurrentTurn(players.get(nextIndex).getUser());
+      game.setCurrentTurn(players.getFirst().getUser());
+      return;
     }
 
-    // Увеличиваем глобальный номер хода в игре
-    game.setCurrentMoveNumber(game.getCurrentMoveNumber() + 1);
+    int currentIndex = findCurrentPlayerIndex(players, currentTurn);
+    int nextIndex = (currentIndex + 1) % players.size();
+    game.setCurrentTurn(players.get(nextIndex).getUser());
+  }
 
-    // Формируем сообщение для WebSocket
+  private int findCurrentPlayerIndex(List<GamePlayer> players, User currentTurn) {
+    for (int i = 0; i < players.size(); i++) {
+      if (players.get(i).getUser().getId().equals(currentTurn.getId())) {
+        return i;
+      }
+    }
+
+    throw new IllegalStateException("Игрок не найден");
+  }
+
+  private void notifyPlayersAboutTurn(Game game) {
     TurnUpdateMessage message = new TurnUpdateMessage();
     message.setGameId(game.getId());
     message.setCurrentPlayerUsername(game.getCurrentTurn().getUsername());
@@ -72,7 +85,5 @@ public class GameTurnService {
         "/topic/game/" + game.getId() + "/turn",
         message
     );
-
-    return gameRepository.save(game);
   }
 }

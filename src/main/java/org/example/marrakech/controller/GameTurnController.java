@@ -15,7 +15,6 @@ public class GameTurnController {
     this.gameTurnService = gameTurnService;
   }
 
-  // Эндпоинт для переключения текущего игрока в игре с указанным id
   @PostMapping("/{gameId}/next")
   public ResponseEntity<?> nextTurn(@PathVariable Long gameId) {
     try {

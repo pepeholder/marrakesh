@@ -1,8 +1,6 @@
 package org.example.marrakech.service;
 
-import org.example.marrakech.dto.GameStatusUpdateMessage;
-import org.example.marrakech.dto.MoveResponse;
-import org.example.marrakech.dto.TurnRequest;
+import org.example.marrakech.dto.*;
 import org.example.marrakech.entity.Carpet;
 import org.example.marrakech.entity.CarpetPosition;
 import org.example.marrakech.entity.Game;
@@ -17,7 +15,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 public class TurnService {
@@ -26,90 +23,144 @@ public class TurnService {
   private final CarpetRepository carpetRepository;
   private final CarpetPositionRepository carpetPositionRepository;
   private final GameService gameService;
-  private final CarpetService carpetService;
   private final GameTurnService gameTurnService;
   private final GamePlayerRepository gamePlayerRepository;
   private final SimpMessagingTemplate messagingTemplate;
+  private final GameCompletionService gameCompletionService;
 
   public TurnService(GameRepository gameRepository,
                      CarpetRepository carpetRepository,
                      CarpetPositionRepository carpetPositionRepository,
                      GameService gameService,
-                     CarpetService carpetService,
                      GameTurnService gameTurnService,
                      GamePlayerRepository gamePlayerRepository,
-                     SimpMessagingTemplate messagingTemplate) {
+                     SimpMessagingTemplate messagingTemplate,
+                     GameCompletionService gameCompletionService) {
     this.gameRepository = gameRepository;
     this.carpetRepository = carpetRepository;
     this.carpetPositionRepository = carpetPositionRepository;
     this.gameService = gameService;
-    this.carpetService = carpetService;
     this.gameTurnService = gameTurnService;
     this.gamePlayerRepository = gamePlayerRepository;
     this.messagingTemplate = messagingTemplate;
+    this.gameCompletionService = gameCompletionService;
   }
 
   /**
-   * Выполняет перемещение Ассама, генерирует бросок кубика, и если Ассам заканчивает ход на
-   * клетке с чужим верхним ковром, рассчитывает оплату. Оплата рассчитывается как размер группы
-   * смежных клеток, покрытых верхним слоем ковра, к которому принадлежит данная клетка.
+   * Выполняет перемещение Ассама, генерирует бросок кубика и обрабатывает оплату за наступление
+   * на чужой ковёр. Если баланс становится 0, игрок выбывает – его ковер удаляется, и
+   * отправляется уведомление через WebSocket
    *
-   * @param gameId идентификатор игры.
-   * @param movementDirection выбранное направление ("up", "down", "left", "right").
-   * @return MoveResponse, содержащий обновлённое состояние игры и число, выпавшее на кубике.
+   * @param gameId идентификатор игры
+   * @param movementDirection выбранное направление ("up", "down", "left", "right")
+   * @return MoveResponse, содержащий обновлённое состояние игры и число, выпавшее на кубике
    */
   @Transactional
   public MoveResponse completeMove(Long gameId, String movementDirection) {
-    // Извлекаем игру
     Game game = gameRepository.findById(gameId)
-        .orElseThrow(() -> new IllegalArgumentException("Game not found"));
+        .orElseThrow(() -> new IllegalArgumentException("Игра не найдена"));
 
-    // Генерируем бросок кубика и перемещаем Ассама
-    int diceRoll = gameService.rollDice();
-    gameService.moveAssam(game, movementDirection, diceRoll);
-    gameRepository.save(game);
+    int diceRoll = moveAssamAndSave(game, movementDirection);
 
-    // Получаем конечные координаты Ассама
     int finalX = game.getAssamPositionX();
     int finalY = game.getAssamPositionY();
 
-    // Используем метод, возвращающий только верхнюю запись на этой клетке
-    Optional<CarpetPosition> cpOpt = carpetPositionRepository.findTopByGameAndPositionOrderByPlacementTurnDesc(game.getId(), finalX, finalY);
-    if (cpOpt.isPresent()) {
-      Carpet topCarpet = cpOpt.get().getCarpet();
-      User carpetOwner = topCarpet.getOwner();
-      User currentUser = game.getCurrentTurn();
-      // Если верхний ковер принадлежит противнику, рассчитываем платёж
-      if (!carpetOwner.getId().equals(currentUser.getId())) {
-        int payment = calculatePayment(game.getId(), finalX, finalY, topCarpet);
-        GamePlayer activeRecord = gamePlayerRepository.findByGameIdAndUserId(game.getId(), currentUser.getId())
-            .orElseThrow(() -> new IllegalStateException("Active player's record not found"));
-        GamePlayer ownerRecord = gamePlayerRepository.findByGameIdAndUserId(game.getId(), carpetOwner.getId())
-            .orElseThrow(() -> new IllegalStateException("Owner's record not found"));
-        activeRecord.setCoins(activeRecord.getCoins() - payment);
-        ownerRecord.setCoins(ownerRecord.getCoins() + payment);
-        if (activeRecord.getCoins() <= 0) {
-          activeRecord.setCoins(0);
-          currentUser.setPlaying(false);
-          // Если игрок выбывает, его ковер удаляется
-          carpetRepository.findByGameAndOwner(game, currentUser)
-              .ifPresent(carpetRepository::delete);
-        }
-      }
-    }
+    handleCarpetPaymentIfNeeded(game, finalX, finalY);
 
     return new MoveResponse(game, diceRoll);
   }
 
+  private int moveAssamAndSave(Game game, String movementDirection) {
+    int diceRoll = gameService.rollDice();
+    gameService.moveAssam(game, movementDirection, diceRoll);
+    gameRepository.save(game);
+    return diceRoll;
+  }
+
+  private void handleCarpetPaymentIfNeeded(Game game, int x, int y) {
+    Optional<CarpetPosition> cpOpt = carpetPositionRepository
+        .findTopByGameAndPositionOrderByPlacementTurnDesc(game.getId(), x, y);
+
+    if (cpOpt.isEmpty()) return;
+
+    Carpet topCarpet = cpOpt.get().getCarpet();
+    User carpetOwner = topCarpet.getOwner();
+    User currentUser = game.getCurrentTurn();
+
+    if (carpetOwner.getId().equals(currentUser.getId())) return;
+
+    int payment = calculatePayment(game.getId(), x, y, topCarpet);
+
+    GamePlayer payer = gamePlayerRepository.findByGameIdAndUserId(game.getId(), currentUser.getId())
+        .orElseThrow(() -> new IllegalStateException("Active player's record not found"));
+    GamePlayer receiver = gamePlayerRepository.findByGameIdAndUserId(game.getId(), carpetOwner.getId())
+        .orElseThrow(() -> new IllegalStateException("Owner's record not found"));
+
+    processPayment(game, payment, currentUser, carpetOwner, payer, receiver);
+    handlePlayerEliminationIfNeeded(game, payer, currentUser);
+  }
+
+  private void processPayment(Game game, int payment, User fromUser, User toUser,
+                              GamePlayer payer, GamePlayer receiver) {
+    int actualPayment = Math.min(payer.getCoins(), payment);
+
+    payer.setCoins(payer.getCoins() - actualPayment);
+    receiver.setCoins(receiver.getCoins() + actualPayment);
+
+    if (actualPayment > 0) {
+      PaymentNotificationMessage msg = new PaymentNotificationMessage(
+          game.getId(), fromUser.getUsername(), toUser.getUsername(), actualPayment
+      );
+      messagingTemplate.convertAndSend("/topic/game/" + game.getId() + "/payment", msg);
+    }
+  }
+
+  private void handlePlayerEliminationIfNeeded(Game game, GamePlayer player, User user) {
+    if (player.getCoins() > 0) return;
+
+    player.setCoins(0);
+    user.setPlaying(false);
+
+    carpetRepository.findByGameAndOwner(game, user).ifPresent(carpet -> {
+      carpetRepository.delete(carpet);
+
+      FieldUpdateMessage fieldUpdate = buildFieldUpdateMessage(game, user.getId());
+      messagingTemplate.convertAndSend("/topic/game/" + game.getId() + "/fieldUpdate", fieldUpdate);
+    });
+
+    PlayerEliminatedMessage eliminatedMsg = new PlayerEliminatedMessage(game.getId(), user.getUsername());
+    messagingTemplate.convertAndSend("/topic/game/" + game.getId() + "/elimination", eliminatedMsg);
+  }
+
   /**
-   * Расчитывает сумму оплаты как размер группы смежных клеток, на которых верхним слоем
-   * является тот же ковер, что и targetCarpet. При этом для каждой клетки ищется именно верхний ковер.
+   * Собирает обновление для игровых клеток после изменения (после выбывания игрока).
+   * Для каждой клетки проверяет верхний ковер и формирует список обновлений
+   */
+  private FieldUpdateMessage buildFieldUpdateMessage(Game game, Long eliminatedUserId) {
+    List<FieldUpdateMessage.CellUpdate> updates = new ArrayList<>();
+
+    for (int x = 0; x < 7; x++) {
+      for (int y = 0; y < 7; y++) {
+        Optional<CarpetPosition> cpOpt = carpetPositionRepository.findTopByGameAndPositionOrderByPlacementTurnDesc(game.getId(), x, y);
+        String carpetColor = cpOpt.map(cp -> cp.getCarpet().getColor()).orElse(null);
+
+        if (cpOpt.isPresent() && cpOpt.get().getCarpet().getOwner().getId().equals(eliminatedUserId)) {
+          updates.add(new FieldUpdateMessage.CellUpdate(x, y, carpetColor));
+        }
+      }
+    }
+    return new FieldUpdateMessage(game.getId(), updates);
+  }
+
+  /**
+   * Расчитывает сумму оплаты как размер группы смежных клеток, где верхним слоем является тот же ковер.
+   * Группу определяем обходом в ширину по соседним клеткам
    *
-   * @param gameId идентификатор игры.
-   * @param startX координата X стартовой клетки.
-   * @param startY координата Y стартовой клетки.
-   * @param targetCarpet целевой ковер (верхний ковер на клетке, на которой завершился ход Ассама).
-   * @return число клеток в группе смежных с одинаковым верхним ковром targetCarpet.
+   * @param gameId идентификатор игры
+   * @param startX координата x стартовой клетки
+   * @param startY координата y стартовой клетки
+   * @param targetCarpet целевой ковер
+   * @return количество клеток в группе, покрытых верхним слоем targetCarpet
    */
   private int calculatePayment(Long gameId, int startX, int startY, Carpet targetCarpet) {
     boolean[][] visited = new boolean[7][7];
@@ -123,11 +174,12 @@ public class TurnService {
       int[] current = queue.poll();
       int cx = current[0];
       int cy = current[1];
-      // Получаем верхний ковер на клетке, используя нативный метод
+
       Optional<CarpetPosition> cp = carpetPositionRepository.findTopByGameAndPositionOrderByPlacementTurnDesc(gameId, cx, cy);
       if (cp.isPresent()) {
         Carpet currentCarpet = cp.get().getCarpet();
-        // Если верхний ковер совпадает с targetCarpet, учитываем эту клетку
+
+        // Если верхний ковер совпадает с targetCarpet, учитываем клетку
         if (currentCarpet.getCarpetId().equals(targetCarpet.getCarpetId())) {
           count++;
           for (int[] dir : directions) {
@@ -145,52 +197,29 @@ public class TurnService {
   }
 
   /**
-   * Переключает текущий ход, увеличивает номер хода и отправляет уведомление через WebSocket.
+   * Переключает текущий ход, увеличивает номер хода и отправляет обновление через WebSocket
    *
-   * @param gameId идентификатор игры.
-   * @return обновлённое состояние игры с переключённым ходом.
+   * @param gameId идентификатор игры
+   * @return обновлённое состояние игры с переключённым ходом
    */
   @Transactional
   public Game switchTurn(Long gameId) {
     Game game = gameTurnService.switchToNextTurn(gameId);
-    checkGameCompletion(game);
+    gameCompletionService.checkGameCompletion(game);
+
+    // Проверяем, что текущее значение currentTurn не равно null
+    if (game.getCurrentTurn() == null) {
+      throw new IllegalStateException("Current turn is null; cannot send turn update.");
+    }
+
+    // Отправляем уведомление о смене хода, используя поле currentMoveNumber
+    TurnUpdateMessage turnMsg = new TurnUpdateMessage(
+        game.getId(),
+        game.getCurrentTurn().getUsername(),
+        game.getCurrentMoveNumber()
+    );
+    messagingTemplate.convertAndSend("/topic/game/" + game.getId() + "/turn", turnMsg);
+
     return game;
-  }
-
-  /**
-   * Проверяет, завершилась ли игра. Игра завершается, если:
-   * - Остался только один активный игрок, или
-   * - У всех активных игроков размещено не менее 12 ковров.
-   *
-   * При завершении игры отправляется уведомление через WebSocket.
-   *
-   * @param game игра, которую нужно проверить.
-   */
-  private void checkGameCompletion(Game game) {
-    List<GamePlayer> players = gamePlayerRepository.findByGameId(game.getId());
-    List<GamePlayer> activePlayers = players.stream()
-        .filter(gp -> gp.getUser().isPlaying())
-        .collect(Collectors.toList());
-
-    if (activePlayers.size() == 1) {
-      game.setStatus("finished");
-      gameRepository.save(game);
-      String winnerName = activePlayers.get(0).getUser().getUsername();
-      GameStatusUpdateMessage finishUpdate = new GameStatusUpdateMessage(game.getId(), game.getStatus(), winnerName);
-      messagingTemplate.convertAndSend("/topic/game/" + game.getId() + "/status", finishUpdate);
-      return;
-    }
-
-    boolean allPlayersFinished = activePlayers.stream()
-        .allMatch(gp -> carpetRepository.countByGameAndOwner(game, gp.getUser()) >= 12);
-    if (allPlayersFinished) {
-      game.setStatus("finished");
-      gameRepository.save(game);
-      Optional<GamePlayer> winnerOpt = activePlayers.stream()
-          .max(Comparator.comparingInt(GamePlayer::getCoins));
-      String winnerName = winnerOpt.map(gp -> gp.getUser().getUsername()).orElse("none");
-      GameStatusUpdateMessage finishUpdate = new GameStatusUpdateMessage(game.getId(), game.getStatus(), winnerName);
-      messagingTemplate.convertAndSend("/topic/game/" + game.getId() + "/status", finishUpdate);
-    }
   }
 }

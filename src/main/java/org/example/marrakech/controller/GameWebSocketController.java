@@ -22,16 +22,13 @@ public class GameWebSocketController {
     this.gameService = gameService;
   }
 
-  // Клиенты отправляют сообщение на /app/game/update для инициирования обновления
   @MessageMapping("/game/update")
   public void updateGame(GameUpdateMessage message) {
-    // Получаем игру по id
     Optional<Game> optionalGame = gameService.getGameById(message.getGameId());
     if (optionalGame.isPresent()) {
       Game game = optionalGame.get();
       String currentTurnUsername = game.getCurrentTurn() != null ? game.getCurrentTurn().getUsername() : "none";
       GameUpdateMessage update = new GameUpdateMessage(game.getId(), game.getStatus(), currentTurnUsername);
-      // Отправляем обновление всем, кто подписался на топик конкретной игры
       messagingTemplate.convertAndSend("/topic/game/" + game.getId(), update);
     }
   }

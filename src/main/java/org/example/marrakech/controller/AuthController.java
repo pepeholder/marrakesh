@@ -38,11 +38,9 @@ public class AuthController {
   @PostMapping("/login")
   public ResponseEntity<?> login(@RequestBody LoginDTO loginDto) {
     try {
-      // Попытка аутентификации пользователя
       authenticationManager.authenticate(
           new UsernamePasswordAuthenticationToken(loginDto.getUsername(), loginDto.getPassword())
       );
-      // Если аутентификация успешна, можно вернуть сообщение или сгенерировать токен
       return ResponseEntity.ok(Map.of("message", "Login successful"));
     } catch (AuthenticationException e) {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED)

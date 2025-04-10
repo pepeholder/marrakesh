@@ -8,6 +8,7 @@ import org.example.marrakech.entity.User;
 import org.example.marrakech.repository.CarpetRepository;
 import org.example.marrakech.repository.GamePlayerRepository;
 import org.example.marrakech.repository.GameRepository;
+import org.example.marrakech.repository.UserRepository;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +22,7 @@ public class GameLobbyService {
   private final GameRepository gameRepository;
   private final GamePlayerRepository gamePlayerRepository;
   private final CarpetRepository carpetRepository;
+  private final UserRepository userRepository;
   private final SimpMessagingTemplate messagingTemplate;
 
   // Доступные цвета для игроков (и их ковров)
@@ -29,97 +31,100 @@ public class GameLobbyService {
   public GameLobbyService(GameRepository gameRepository,
                           GamePlayerRepository gamePlayerRepository,
                           CarpetRepository carpetRepository,
+                          UserRepository userRepository,
                           SimpMessagingTemplate messagingTemplate) {
     this.gameRepository = gameRepository;
     this.gamePlayerRepository = gamePlayerRepository;
     this.carpetRepository = carpetRepository;
+    this.userRepository = userRepository;
     this.messagingTemplate = messagingTemplate;
   }
 
   @Transactional
   public Game joinGame(User user) {
-    // Ищем игру со статусом "waiting", в которой меньше 4 игроков
+    Game game = getOrCreateWaitingGame();
+
+    // Если игрок уже в игре – просто возвращаем игру
+    if (gamePlayerRepository.existsByGameIdAndUserId(game.getId(), user.getId())) {
+      return game;
+    }
+
+    String assignedColor = assignColorToNewPlayer(game);
+    addPlayerToGame(game, user, assignedColor);
+    user.setPlaying(true);
+    user.setCurrentGame(game);
+    userRepository.save(user);
+
+    if (gamePlayerRepository.countByGameId(game.getId()) == 4) {
+      startGame(game);
+    }
+
+    return game;
+  }
+
+  private Game getOrCreateWaitingGame() {
     Optional<Game> optionalGame = gameRepository.findAll().stream()
-        .filter(g -> "waiting".equals(g.getStatus())
+        .filter(g -> "waiting".equalsIgnoreCase(g.getStatus())
             && gamePlayerRepository.countByGameId(g.getId()) < 4)
         .findFirst();
 
-    Game selectedGame = optionalGame.orElseGet(() -> {
-      // Если не найдено, создаём новую игру
+    if (optionalGame.isPresent()) {
+      return optionalGame.get();
+    } else {
       Game newGame = new Game();
       newGame.setStatus("waiting");
-
-      // Инициализируем стартовые параметры игры
-      newGame.setTurnOrder(new int[0]);
       newGame.setAssamPositionX(3);
       newGame.setAssamPositionY(3);
       newGame.setAssamDirection("up");
       newGame.setCurrentTurn(null);
+      newGame.setCurrentMoveNumber(1);
 
       return gameRepository.save(newGame);
-    });
-
-    // Проверяем, есть ли игрок уже в игре
-    if (gamePlayerRepository.existsByGameIdAndUserId(selectedGame.getId(), user.getId())) {
-      return selectedGame; // Уже в игре — возвращаем её
     }
+  }
 
-    // Определяем, какие цвета уже используются в игре
-    List<GamePlayer> existingPlayers = gamePlayerRepository.findByGameId(selectedGame.getId());
+  private String assignColorToNewPlayer(Game game) {
+    List<GamePlayer> existingPlayers = gamePlayerRepository.findByGameId(game.getId());
     Set<String> usedColors = existingPlayers.stream()
         .map(GamePlayer::getPlayerColor)
         .collect(Collectors.toSet());
-    // Доступные цвета – те, которых ещё нет
+
     List<String> freeColors = AVAILABLE_COLORS.stream()
         .filter(color -> !usedColors.contains(color))
-        .collect(Collectors.toList());
+        .toList();
 
-    // Если свободных цветов нет, выбираем первый
-    String assignedColor = freeColors.isEmpty() ? AVAILABLE_COLORS.get(0)
+    return freeColors.isEmpty() ? AVAILABLE_COLORS.getFirst()
         : freeColors.get(new Random().nextInt(freeColors.size()));
+  }
 
-    // Определяем текущий порядок вхождения игроков
-    int currentPlayerCount = existingPlayers.size();
-    GamePlayer gamePlayer = new GamePlayer(selectedGame, user, assignedColor);
+  private void addPlayerToGame(Game game, User user, String assignedColor) {
+    int currentPlayerCount = gamePlayerRepository.findByGameId(game.getId()).size();
+    GamePlayer gamePlayer = new GamePlayer(game, user, assignedColor);
     gamePlayer.setTurnOrder(currentPlayerCount);
     gamePlayerRepository.save(gamePlayer);
 
-
-    // Создаём запись для ковра с тем же цветом
     Carpet carpet = new Carpet();
-    carpet.setGame(selectedGame);
+    carpet.setGame(game);
     carpet.setOwner(user);
     carpet.setColor(assignedColor);
     carpetRepository.save(carpet);
 
-    // Если игрок — первый в игре, делаем его текущим
-    if (gamePlayerRepository.countByGameId(selectedGame.getId()) == 1) {
-      selectedGame.setCurrentTurn(user);
-      gameRepository.save(selectedGame);
+    // Если игрок — первый, назначаем его текущим в игре
+    if (gamePlayerRepository.countByGameId(game.getId()) == 1) {
+      game.setCurrentTurn(user);
+      gameRepository.save(game);
     }
+  }
 
-    // Обновляем состояние пользователя
-    user.setPlaying(true);
-    user.setCurrentGame(selectedGame);
-
-    // Если после добавления игрока общее число игроков стало 4, начинаем игру
-    long playerCount = gamePlayerRepository.countByGameId(selectedGame.getId());
-    if (playerCount == 4) {
-      selectedGame.setStatus("in_progress");
-      gameRepository.save(selectedGame);
-
-      // Рассылаем сообщение об изменении статуса игры через WebSocket
-      String currentTurnUsername = selectedGame.getCurrentTurn() != null
-          ? selectedGame.getCurrentTurn().getUsername()
-          : "none";
-      GameStatusUpdateMessage statusUpdate = new GameStatusUpdateMessage(
-          selectedGame.getId(),
-          selectedGame.getStatus(),
-          currentTurnUsername
-      );
-      messagingTemplate.convertAndSend("/topic/game/" + selectedGame.getId() + "/status", statusUpdate);
-    }
-
-    return selectedGame;
+  private void startGame(Game game) {
+    game.setStatus("in_progress");
+    gameRepository.save(game);
+    String currentTurnUsername = (game.getCurrentTurn() != null) ? game.getCurrentTurn().getUsername() : "none";
+    GameStatusUpdateMessage statusUpdate = new GameStatusUpdateMessage(
+        game.getId(),
+        game.getStatus(),
+        currentTurnUsername
+    );
+    messagingTemplate.convertAndSend("/topic/game/" + game.getId() + "/status", statusUpdate);
   }
 }
