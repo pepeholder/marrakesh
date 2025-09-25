@@ -4,8 +4,8 @@ import { useMemo } from "react";
 export interface Token {
   id: string;
   color: string;
-  x: number; // column 0..(size-1)
-  y: number; // row 0..(size-1)
+  x: number;
+  y: number;
 }
 
 export function Board({ size = 7, tokens = [] as Token[], backgroundUrl }: { size?: number; tokens?: Token[]; backgroundUrl?: string }) {
